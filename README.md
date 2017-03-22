@@ -13,8 +13,10 @@ Note: A minimum of 512 MB RAM is required.
 ### Installation
 First, update your system with apt-get update && apt-get upgrade and reboot. This is optional, but recommended.
 
-> wget https://raw.githubusercontent.com/sayem314/Ghost-over-Caddy/master/setup-ghost.sh
+`wget https://git.io/setup-ghost.sh`
 
-> bash setup-ghost.sh BLOG_FULL_DOMAIN_NAME
+`bash setup-ghost.sh BLOG_FULL_DOMAIN_NAME`
 
 Note: Replace BLOG_FULL_DOMAIN_NAME above with your actual full domain name. The latest v0.11-LTS version of Ghost blog will be automatically installed.
+
+*This script is based on Lin Song [Nginx version](https://github.com/hwdsl2/setup-ghost-blog)*
