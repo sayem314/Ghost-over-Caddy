@@ -19,14 +19,15 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see http://www.gnu.org/licenses/.
 
-version='1.0 beta (22 Mar 2017)'
+version='1.1 beta (23 Mar 2017)'
 
-max_blogs=10
+max_blogs=1
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 echoerr() { echo "Error: $1" >&2; }
 
+# Chech operating system
 os_type="$(lsb_release -si 2>/dev/null)"
 os_ver="$(lsb_release -sr 2>/dev/null)"
 if [ -z "$os_type" ] && [ -f "/etc/lsb-release" ]; then
@@ -56,11 +57,14 @@ else
   fi
 fi
 
+# Check for root permission
 if [ "$(id -u)" != 0 ]; then
   echoerr "Script must be run as root. Try 'sudo bash $0'"
   exit 1
 fi
 
+# Check if server has at least 512MB RAM
+# Checking for 470MB RAM since most providers don't offer exact amount of RAM
 phymem="$(free -m | awk '/^Mem:/{print $2}')"
 [ -z "$phymem" ] && phymem=0
 if [ "$phymem" -lt 470 ]; then
@@ -68,6 +72,7 @@ if [ "$phymem" -lt 470 ]; then
   exit 1
 fi
 
+# We would check if domain is valid or not
 FQDN_REGEX='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
 if ! printf %s "$1" | grep -Eq "$FQDN_REGEX"; then
   echo ""
@@ -84,6 +89,8 @@ fi
 ghost_num=1
 ghost_user=ghost
 ghost_port=2368
+
+# Checking if there is a blog already installed
 if id -u ghost >/dev/null 2>&1; then
   echo 'It looks like this server already has Ghost blog installed! '
   if [ -d "/var/caddywww/$1" ]; then
@@ -138,13 +145,15 @@ if id -u ghost >/dev/null 2>&1; then
   fi
 fi
 
-  # Get email for caddyfile
+  # Get email for Caddyfile, email is required for valid SSL
+  # You can type 'off' instead your email, but your site won't be served over https
   echo ""
   echo "  Enter your email for automated ssl"
   read -p "  Email: " domainmail
   until [[ "$domainmail" == *@*.* || "$domainmail" == off ]]; do
     echo ""
     echo "  Invalid email"
+    echo "  Type $(tput setaf 3)off$(tput sgr0) if you don't want https"
     read -p "  Email: " domainmail
   done
 
@@ -187,6 +196,7 @@ BLOG_FQDN=$1
 mkdir -p /opt/src
 cd /opt/src || exit 1
 
+# If CentOS, install some required dependency
 if [ "$os_type" = "CentOS" ]; then
 
   # Add the EPEL repository
@@ -197,14 +207,14 @@ if [ "$os_type" = "CentOS" ]; then
     wget curl sudo libxml2-devel curl-devel httpd-devel pcre-devel \
     || { echoerr "'yum install' failed."; exit 1; }
 
-else
+else # If OS is Debian or Ubuntu
 
   # Update package index
   export DEBIAN_FRONTEND=noninteractive
-  apt-get -yq update || { echoerr "'apt-get update' failed."; exit 1; }
+  apt-get -qq update || { echoerr "'apt-get update' failed."; exit 1; }
 
   # We need some more software
-  apt-get -yq install unzip \
+  apt-get -qq install unzip \
     build-essential apache2-dev libxml2-dev wget curl sudo \
     libcurl4-openssl-dev libpcre3-dev libssl-dev \
     || { echoerr "'apt-get install' failed."; exit 1; }
@@ -216,8 +226,12 @@ fi
   fi
   chmod +x /etc/rc.local
 
+
 # Next, we need to install Node.js.
 # Ref: https://github.com/nodesource/distributions
+#
+# We will install Node 4.x since Ghost blog recommend it
+# See: http://support.ghost.org/supported-node-versions/
 if [ "$ghost_num" = "1" ] || [ ! -f /usr/bin/node ]; then
   if [ "$os_type" = "CentOS" ]; then
     curl -sL https://rpm.nodesource.com/setup_4.x | bash -
@@ -225,14 +239,14 @@ if [ "$ghost_num" = "1" ] || [ ! -f /usr/bin/node ]; then
     yum -y --disablerepo=epel install nodejs || { echoerr "Failed to install 'nodejs'."; exit 1; }
   else
     curl -sL https://deb.nodesource.com/setup_4.x | bash -
-    apt-get -yq install nodejs || { echoerr "Failed to install 'nodejs'."; exit 1; }
+    apt-get -qq install nodejs || { echoerr "Failed to install 'nodejs'."; exit 1; }
   fi
 fi
 
-# To keep your Ghost blog running, install "forever".
-npm install forever -g
+# To keep your Ghost blog running, install "pm2".
+npm install pm2 -g
 
-# Global config
+# Global config for Caddy
 caddyname="Caddy Web Server"
 caddypath="/opt/caddyserver"
 caddyuser="caddy"
@@ -241,6 +255,7 @@ caddywww="/var/caddywww"
 caddylog="/var/log/caddy"
 
   # Detetcting Caddy installed or not
+  # Caddy is required to serve the site to internet
   echo ""
   if [[ -e "$caddypath/caddy" ]]; then
     echo "  $caddyname is already installed on"
@@ -289,7 +304,7 @@ caddylog="/var/log/caddy"
   rm -rf caddy_linux_custom.tar.gz #Deleting Caddy archive
   echo ""
 
-  # Creating non-root user
+  # Creating non-root user for Caddy server
   useradd -r -d $caddypath -s /bin/false $caddyuser
   chown $caddyuser $caddypath
   chown $caddyuser $caddylog
@@ -298,9 +313,10 @@ caddylog="/var/log/caddy"
   APT_GET_CMD="/usr/bin/apt-get"
   echo -n "  Binding port using setcap..."
   if [[ ! -z $APT_GET_CMD ]]; then
-    apt-get install libcap2-bin -y &>/dev/null
+    apt-get install libcap2-bin -qq &>/dev/null
   fi
   setcap cap_net_bind_service=+ep $caddypath/caddy &>/dev/null
+
   # Insert required IPTables rules
   if ! iptables -C INPUT -p tcp --dport 80 -j ACCEPT 2>/dev/null; then
     iptables -I INPUT -p tcp --dport 80 -j ACCEPT
@@ -317,7 +333,7 @@ useradd -r -d "$caddywww/$BLOG_FQDN" -s /bin/false "$ghost_user"
 chown -R $ghost_user $caddywww/$BLOG_FQDN
 
 # Stop running Ghost blog processes, if any.
-su - "$ghost_user" -s /bin/bash -c "forever stopall"
+pm2 kill
 
 # Create temporary swap file to prevent out of memory errors during install
 # Do not create if OpenVZ VPS
@@ -354,39 +370,22 @@ npm install --production
 /bin/cp -f config.js config.js.old 2>/dev/null
 sed "s/my-ghost-blog.com/$BLOG_FQDN/" <config.example.js >config.js
 sed -i "s/port: '2368'/port: '$ghost_port'/" config.js
-
-# We need to make certain that Ghost will start automatically after a reboot
-cat > starter.sh <<'EOF'
-#!/bin/sh
-pgrep -u ghost -f "/usr/bin/node" >/dev/null
-if [ $? -ne 0 ]; then
-  export PATH=/usr/local/bin:$PATH
-  export NODE_ENV=production
-  NODE_ENV=production forever start --sourceDir www/YOUR.DOMAIN.NAME index.js >> /var/log/nodelog.txt 2>&1
-else
-  echo "Already running!"
-fi
 EOF
-
-# Replace placeholder with your actual domain name:
-sed -i "s/www/$caddywww/" starter.sh
-sed -i "s/YOUR.DOMAIN.NAME/$BLOG_FQDN/" starter.sh
 
 if [ "$ghost_num" != "1" ]; then
   sed -i "/^pgrep/s/ghost/ghost$ghost_num/" starter.sh
   sed -i "s/nodelog\.txt/nodelog$ghost_num.txt/" starter.sh
 fi
-
-# Make the script executable with:
-chmod +x starter.sh
-
-# We use crontab to start this script after a reboot:
-crontab -r 2>/dev/null
-crontab -l 2>/dev/null | { cat; echo "@reboot $caddywww/$BLOG_FQDN/starter.sh"; } | crontab -
-
-NODE_ENV=production forever start index.js
-
 SU_END
+
+# Setup pm2 for ghost
+echo "export NODE_ENV=production" >> ~/.profile
+source ~/.profile
+pm2 start index.js --name ghost
+# Get current config
+pm2 dump
+# Start pm2 for ghost on boot
+pm2 startup
 
 # Check if Ghost blog download was successful
 [ ! -f "$caddywww/$BLOG_FQDN/index.js" ] && exit 1
@@ -407,6 +406,7 @@ mkdir -p "$caddywww/$BLOG_FQDN/public"
 PUBLIC_IP=$(wget -t 3 -T 15 -qO- http://ipv4.icanhazip.com)
 
   # Generate Caddyfile
+  # Caddyfile is Caddy web server configuration file
   echo "$BLOG_FQDN {  
     proxy / 127.0.0.1:$ghost_port {
         header_upstream Host {host}
@@ -421,6 +421,8 @@ PUBLIC_IP=$(wget -t 3 -T 15 -qO- http://ipv4.icanhazip.com)
 }
 " >> $caddyfile
 
+# We need to create a service for Caddy
+# Creating service will help Caddy to start on boot/reboot
 if [[ -e /etc/systemd/system/caddy.service || -e /etc/init.d/caddy.sh ]]; then
   echo "  Service already exists! Skipped."
 else
@@ -430,6 +432,7 @@ else
   if [ "$init" == 'systemd' ]; then
     MAIN="$"
     MAINPID="MAINPID"
+    # removing caddy service if any
     rm -f /etc/systemd/system/caddy.service
     cat <<EOF > /etc/systemd/system/caddy.service
 [Unit]
@@ -473,8 +476,11 @@ EOF
   fi
 fi
   
+  # Now we have Caddy service enabled.
+  # Let's start Caddy web server now.
   service caddy start
 
+# Nice, we're succes in installing.
 cat <<EOF
 
 =============================================================================
@@ -503,4 +509,5 @@ Real-time chat: https://ghost.org/slack
 
 EOF
 
+# exit now!
 exit 0
