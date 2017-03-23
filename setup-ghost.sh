@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see http://www.gnu.org/licenses/.
 
-version='1.1 beta (23 Mar 2017)'
+version='1.1.1 beta (23 Mar 2017)'
 
 max_blogs=1
 
@@ -27,7 +27,7 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 echoerr() { echo "Error: $1" >&2; }
 
-# Chech operating system
+# Check operating system
 os_type="$(lsb_release -si 2>/dev/null)"
 os_ver="$(lsb_release -sr 2>/dev/null)"
 if [ -z "$os_type" ] && [ -f "/etc/lsb-release" ]; then
@@ -159,18 +159,38 @@ fi
 
 clear
 
+# Retrieve server IP for display below
+PUBLIC_IP=$(wget -t 3 -T 15 -qO- http://ipv4.icanhazip.com)
+
 cat <<EOF
+
 Welcome! This script will install the latest v0.11-LTS version of Ghost blog
 on your server, with Caddy (as a reverse proxy).
 
+EOF
+
+sleep 2
+
+cat <<EOF
 The full domain name for your new blog is:
 
  $(tput setaf 2)$1$(tput sgr0)
 
+EOF
+
+sleep 2
+
+cat <<EOF
 Please double check. This MUST be correct for it to work!
 
-IMPORTANT: DO NOT RUN THIS SCRIPT ON YOUR PC OR MAC!
+IMPORTANT: You must set up DNS (A Record) to point
+$1 to this server $PUBLIC_IP
 
+EOF
+
+sleep 2
+
+cat <<EOF
 This script should ONLY be used on a VPS or dedicated server, with
 freshly installed Ubuntu 16.04/14.04/12.04, Debian 8 or CentOS 6/7.
 
@@ -382,8 +402,10 @@ SU_END
 echo "export NODE_ENV=production" >> ~/.profile
 source ~/.profile
 pm2 start index.js --name ghost
+
 # Get current config
-pm2 dump
+pm2 dump #/root/.pm2/dump.pm2
+
 # Start pm2 for ghost on boot
 pm2 startup
 
@@ -401,9 +423,6 @@ fi
 
 # Create the public folder which will hold robots.txt, etc.
 mkdir -p "$caddywww/$BLOG_FQDN/public"
-
-# Retrieve server IP for display below
-PUBLIC_IP=$(wget -t 3 -T 15 -qO- http://ipv4.icanhazip.com)
 
   # Generate Caddyfile
   # Caddyfile is Caddy web server configuration file
@@ -491,16 +510,9 @@ Ghost blog is installed in: $caddywww/$BLOG_FQDN
 Caddy web server config: $caddyfile
 Caddy web server logs: $caddylog
 
-[Next Steps]
-
-You must set up DNS (A Record) to point $BLOG_FQDN to this server $PUBLIC_IP
-
 Browse to http://$BLOG_FQDN/ghost (alternatively, set up SSH port forwarding
 and browse to http://localhost:$ghost_port/ghost) to complete the initial
 configuration of your blog. Choose a very secure password.
-
-To restart this Ghost blog:
-su - $ghost_user -s /bin/bash -c 'forever stopall; ./starter.sh'
 
 Ghost support: http://support.ghost.org
 Real-time chat: https://ghost.org/slack
