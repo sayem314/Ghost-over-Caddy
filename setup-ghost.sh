@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see http://www.gnu.org/licenses/.
 
-version='1.1.1 beta (23 Mar 2017)'
+version='1.2 beta (26 Mar 2017)'
 
 max_blogs=1
 
@@ -64,11 +64,11 @@ if [ "$(id -u)" != 0 ]; then
 fi
 
 # Check if server has at least 512MB RAM
-# Checking for 470MB RAM since most providers don't offer exact amount of RAM
+# Checking for 240MB RAM since most providers don't offer exact amount of RAM
 phymem="$(free -m | awk '/^Mem:/{print $2}')"
 [ -z "$phymem" ] && phymem=0
-if [ "$phymem" -lt 470 ]; then
-  echoerr "A minimum of 512 MB RAM is required for Ghost blog install."
+if [ "$phymem" -lt 240 ]; then
+  echoerr "A minimum of 256 MB RAM is required for Ghost blog install."
   exit 1
 fi
 
@@ -246,6 +246,35 @@ fi
   fi
   chmod +x /etc/rc.local
 
+# We will calculate how much swap we would need
+tram=$( free -m | grep Mem | awk 'NR=1 {print $2}' )
+let "swapsize = 2 * $tram" # multiply by 2 (2x amount of ram)
+if [ "$phymem" -lt 300 ]; then
+  echo "We will now create 512MB swapfile!"
+  swap=$swapsize
+  swapmnt=yes
+elif [[ "$phymem" -lt 600 ]]; then
+  echo "We will now create 1GB swapfile!"
+  swap=$swapsize
+  swapmnt=no
+fi
+
+  # Create temporary swap file to prevent out of memory errors during install
+  # Don not create swap if system has 1GB or more RAM
+  if [[ $tram -lt 950 ]]; then
+    tswap=$( cat /proc/meminfo | grep SwapTotal | awk 'NR=1 {print $2$3}' )
+    if [ "$tswap" = '0kB' ]; then
+      swap_tmp="/mnt/swapfile"
+      # Do not create if OpenVZ VPS
+      if [ ! -f /proc/user_beancounters ]; then
+        echo
+        echo "Creating temporary swap file, please wait ..."
+        echo
+        dd if=/dev/zero of="$swap_tmp" bs=1M count=$swap 2>/dev/null || /bin/rm -f "$swap_tmp"
+        chmod 600 "$swap_tmp" && mkswap "$swap_tmp" &>/dev/null && swapon "$swap_tmp"
+      fi
+    fi
+  fi
 
 # Next, we need to install Node.js.
 # Ref: https://github.com/nodesource/distributions
@@ -355,23 +384,6 @@ chown -R $ghost_user $caddywww/$BLOG_FQDN
 # Stop running Ghost blog processes, if any.
 pm2 kill
 
-# Create temporary swap file to prevent out of memory errors during install
-# Do not create if OpenVZ VPS
-  tram=$( free -m | grep Mem | awk 'NR=1 {print $2}' )
-  if [[ $tram -lt 950 ]]; then
-    tswap=$( cat /proc/meminfo | grep SwapTotal | awk 'NR=1 {print $2$3}' )
-    if [ "$tswap" = '0kB' ]; then
-      swap_tmp="/swapfile"
-      if [ ! -f /proc/user_beancounters ]; then
-        echo
-        echo "Creating temporary swap file, please wait ..."
-        echo
-        dd if=/dev/zero of="$swap_tmp" bs=1M count=512 2>/dev/null || /bin/rm -f "$swap_tmp"
-        chmod 600 "$swap_tmp" && mkswap "$swap_tmp" &>/dev/null && swapon "$swap_tmp"
-      fi
-    fi
-  fi
-
 # Switch to Ghost blog user. We use a "here document" to run multiple commands as this user.
 cd "$caddywww/$BLOG_FQDN" || exit 1
 sudo -u "$ghost_user" BLOG_FQDN="$BLOG_FQDN" ghost_num="$ghost_num" ghost_port="$ghost_port" HOME="$caddywww/$BLOG_FQDN" /bin/bash <<'SU_END'
@@ -397,6 +409,13 @@ if [ "$ghost_num" != "1" ]; then
   sed -i "s/nodelog\.txt/nodelog$ghost_num.txt/" starter.sh
 fi
 SU_END
+
+# Remove temporary swap file
+if [[ $swapmnt == yes ]]; then
+  echo "$swap_tmp   none    swap    sw    0   0" >> /etc/fstab
+elif [[ $swapmnt == no ]]; then
+  swapoff $swap_tmp && /bin/rm -f $swap_tmp
+fi
 
 # Setup pm2 for ghost
 echo "export NODE_ENV=production" >> ~/.profile
