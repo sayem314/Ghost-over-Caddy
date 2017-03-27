@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see http://www.gnu.org/licenses/.
 
-version='1.2 beta (26 Mar 2017)'
+version='1.3 beta (27 Mar 2017)'
 
 max_blogs=1
 
@@ -145,8 +145,22 @@ if id -u ghost >/dev/null 2>&1; then
   fi
 fi
 
-  # Get email for Caddyfile, email is required for valid SSL
-  # You can type 'off' instead your email, but your site won't be served over https
+# detect if user is behind a NAT
+internalIP=$(ip addr | grep 'inet' | grep -v inet6 | grep -vE '127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | grep -o -E '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | head -1)
+externalIP=$(wget -qO- ipv4.icanhazip.com)
+if [[ $internalIP == "$externalIP" ]]; then
+  nat="no"
+else
+  nat="yes"
+fi
+
+# Get email for Caddyfile, email is required for valid SSL
+# You can type 'off' instead your email, but your site won't be served over https
+if [[ "$nat" == "no" ]]; then
+  echo "  You're on  $(tput setaf 3)NAT server,$(tput sgr0) $(tput setaf 2)https$(tput sgr0) will be $(tput setaf 1)disabled$(tput sgr0)"
+  sleep 3
+  domainmail=off
+else
   echo ""
   echo "  Enter your email for automated ssl"
   read -p "  Email: " domainmail
@@ -156,11 +170,9 @@ fi
     echo "  Type $(tput setaf 3)off$(tput sgr0) if you don't want https"
     read -p "  Email: " domainmail
   done
+fi
 
 clear
-
-# Retrieve server IP for display below
-PUBLIC_IP=$(wget -t 3 -T 15 -qO- http://ipv4.icanhazip.com)
 
 cat <<EOF
 
@@ -184,7 +196,7 @@ cat <<EOF
 Please double check. This MUST be correct for it to work!
 
 IMPORTANT: You must set up DNS (A Record) to point
-$1 to this server $PUBLIC_IP
+$1 to this server $externalIP
 
 EOF
 
