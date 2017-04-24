@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see http://www.gnu.org/licenses/.
 
-version='1.3.1 beta (27 Mar 2017)'
+version='1.3.2 beta (24 Apr 2017)'
 
 max_blogs=1
 
@@ -323,20 +323,20 @@ caddylog="/var/log/caddy"
   else
     # Detect architecture
     if [ -n "$(uname -m | grep 64)" ]; then
-      cpubits="arch=amd64"
-      cpubitsname="for (64bit)..."
+      cpubits="amd64"
+      cpubitsname="(64bit)..."
     elif [ -n "$(uname -m | grep 86)" ]; then
-      cpubits="arch=386"
-      cpubitsname="for (32bit)..."
+      cpubits="386"
+      cpubitsname="(32bit)..."
     elif [ -n "$(uname -m | grep armv5)" ]; then
-      cpubits="arch=arm&arm=5"
-      cpubitsname="for (ARM 5)..."
+      cpubits="arm5"
+      cpubitsname="(ARM 5)..."
     elif [ -n "$(uname -m | grep armv6l)" ]; then
-      cpubits="arch=arm&arm=6"
-      cpubitsname="for (ARM 6)..."
+      cpubits="arm6"
+      cpubitsname="(ARM 6)..."
     elif [ -n "$(uname -m | grep armv7l)" ]; then
-      cpubits="arch=arm&arm=7"
-      cpubitsname="for (ARM 7)..."
+      cpubits="arm7"
+      cpubitsname="(ARM 7)..."
     else
       echo ""
       echo "  unsupported or unknown architecture"
@@ -347,8 +347,8 @@ caddylog="/var/log/caddy"
   nocert="--no-check-certificate"
 
   # Installing Caddy
-  echo -n "  Downloading $caddyname $cpubitsname" #Caddy linux
-  wget -q $nocert "https://caddyserver.com/download/build?os=linux&$cpubits&features=" -O "caddy_linux_custom.tar.gz"
+  echo -n "  Downloading $caddyname for $cpubitsname" #Caddy linux
+  wget -q $nocert "https://caddyserver.com/download/linux/$cpubits" -O "caddy_linux_custom.tar.gz"
   echo "  [$(tput setaf 2)DONE$(tput sgr0)]"
 
   # Creating folders
