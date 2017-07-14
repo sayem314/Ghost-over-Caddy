@@ -5,8 +5,8 @@ Powered by Node.js, Ghost blog is a simple and modern WordPress alternative whic
 
 ### Requirements
 A dedicated server or Virtual Private Server (VPS), freshly installed with:
-* Ubuntu 16.04 (Xenial), 14.04 (Trusty) or 12.04 (Precise)
-* Debian 8 (Jessie)
+* Ubuntu 16.04 (Xenial) or 14.04 (Trusty)
+* Debian 8 (Jessie) or Debian 9 (Stretch)
 * CentOS 6 or 7
 Note: A minimum of 512 MB RAM is required.
 
@@ -26,6 +26,6 @@ alternatively you can turn off tls. edit Caddyfile located on /etc/Caddyfile and
 
 ##### Donations
 If you want to show your appreciation, you can donate via Bitcoin. Thanks!
-1GN7M2W4eAXTLDCeskwsgqJB9gFA3gLqPB
+`1GN7M2W4eAXTLDCeskwsgqJB9gFA3gLqPB`
 
 *This script is based on Lin Song [Nginx version](https://github.com/hwdsl2/setup-ghost-blog)*
