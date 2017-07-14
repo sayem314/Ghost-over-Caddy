@@ -19,30 +19,35 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see http://www.gnu.org/licenses/.
 
-version='1.3.2 beta (24 Apr 2017)'
+version='1.3.3 beta (14 Jul 2017)'
 
-max_blogs=1
+max_blogs=3
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-echoerr() { echo "Error: $1" >&2; }
+echoerr() { echo; echo "Error: $1" >&2; echo; }
+
 
 # Check operating system
 os_type="$(lsb_release -si 2>/dev/null)"
-os_ver="$(lsb_release -sr 2>/dev/null)"
-if [ -z "$os_type" ] && [ -f "/etc/lsb-release" ]; then
-  os_type="$(. /etc/lsb-release && echo "$DISTRIB_ID")"
-  os_ver="$(. /etc/lsb-release && echo "$DISTRIB_RELEASE")"
+os_vers="$(lsb_release -sr 2>/dev/null)"
+if [ -z "$os_type" ]; then
+  [ -f /etc/os-release  ] && os_type="$(. /etc/os-release  && echo "$ID")"
+  [ -f /etc/os-release  ] && os_vers="$(. /etc/os-release  && echo "$VERSION_ID")"
+  [ -f /etc/lsb-release ] && os_type="$(. /etc/lsb-release && echo "$DISTRIB_ID")"
+  [ -f /etc/lsb-release ] && os_vers="$(. /etc/lsb-release && echo "$DISTRIB_RELEASE")"
+  [ "$os_type" = "debian" ] && os_type=Debian
+  [ "$os_type" = "ubuntu" ] && os_type=Ubuntu
 fi
 if [ "$os_type" = "Ubuntu" ]; then
-  if [ "$os_ver" != "16.04" ] && [ "$os_ver" != "14.04" ] && [ "$os_ver" != "12.04" ]; then
-    echoerr "This script only supports Ubuntu 16.04/14.04/12.04."
+  if [ "$os_vers" != "16.04" ] && [ "$os_vers" != "14.04" ] && [ "$TRAVIS" != "true" ]; then
+    echoerr "This script only supports Ubuntu 16.04 and 14.04."
     exit 1
   fi
 elif [ "$os_type" = "Debian" ]; then
-  os_ver="$(sed 's/\..*//' /etc/debian_version 2>/dev/null)"
-  if [ "$os_ver" != "8" ]; then
-    echoerr "This script only supports Debian 8 (Jessie)."
+  os_vers="$(sed 's/\..*//' /etc/debian_version 2>/dev/null)"
+  if [ "$os_vers" != "8" ] && [ "$os_vers" != "9" ]; then
+    echoerr "This script only supports Debian 9 and 8."
     exit 1
   fi
 else
@@ -50,11 +55,10 @@ else
     echoerr "This script only supports Ubuntu, Debian and CentOS."
     exit 1
   elif ! grep -qs -e "release 6" -e "release 7" /etc/redhat-release; then
-    echoerr "This script only supports CentOS 6 and 7."
+    echoerr "This script only supports CentOS 7 and 6."
     exit 1
-  else
-    os_type="CentOS"
   fi
+  os_type="CentOS"
 fi
 
 # Check for root permission
@@ -86,16 +90,17 @@ if id -u "ghost$max_blogs" >/dev/null 2>&1; then
   exit 1
 fi
 
+# Checking if there is a blog already installed
 ghost_num=1
 ghost_user=ghost
 ghost_port=2368
 
-# Checking if there is a blog already installed
 if id -u ghost >/dev/null 2>&1; then
+  echo
   echo 'It looks like this server already has Ghost blog installed! '
   if [ -d "/var/caddywww/$1" ]; then
-    echo
     echo "To install additional blogs, you must use a new full domain name."
+    echo
     exit 1
   fi
   
@@ -156,16 +161,16 @@ fi
 # You can type 'off' instead your email, but your site won't be served over https
 echo ""
 if [[ "$nat" == "no" ]]; then
-  echo "  Enter your email for automated ssl"
-  read -p "  Email: " domainmail
+  echo "Enter your email for automated ssl"
+  read -p "Email: " domainmail
   until [[ "$domainmail" == *@*.* || "$domainmail" == off ]]; do
     echo ""
-    echo "  Invalid email"
-    echo "  Type $(tput setaf 3)off$(tput sgr0) if you don't want https"
-    read -p "  Email: " domainmail
+    echo "Invalid email"
+    echo "Type $(tput setaf 3)off$(tput sgr0) if you don't want https"
+    read -p "Email: " domainmail
   done
 else
-  echo "  You're on  $(tput setaf 3)NAT server,$(tput sgr0) $(tput setaf 2)https$(tput sgr0) will be $(tput setaf 1)disabled$(tput sgr0)"
+  echo "You're on $(tput setaf 3)NAT server,$(tput sgr0) $(tput setaf 2)https$(tput sgr0) will be $(tput setaf 1)disabled$(tput sgr0)"
   sleep 3
   domainmail=off
 fi
@@ -202,7 +207,7 @@ sleep 2
 
 cat <<EOF
 This script should ONLY be used on a VPS or dedicated server, with
-freshly installed Ubuntu 16.04/14.04/12.04, Debian 8 or CentOS 6/7.
+freshly installed Ubuntu 16.04/14.04, Debian 8/9 or CentOS 6/7.
 
 EOF
 
@@ -221,6 +226,7 @@ case $response in
 esac
 
 BLOG_FQDN=$1
+cwd=`pwd`
 
 # Create and change to working dir
 mkdir -p /opt/src
@@ -260,11 +266,11 @@ fi
 tram=$( free -m | grep Mem | awk 'NR=1 {print $2}' )
 let "swapsize = 2 * $tram" # multiply by 2 (2x amount of ram)
 if [ "$phymem" -lt 300 ]; then
-  echo "We will now create 512MB swapfile!"
+  swapts=512MB
   swap=$swapsize
   swapmnt=yes
 elif [[ "$phymem" -lt 600 ]]; then
-  echo "We will now create 1GB swapfile!"
+  swapts=1GB
   swap=$swapsize
   swapmnt=no
 fi
@@ -275,6 +281,7 @@ fi
     tswap=$( cat /proc/meminfo | grep SwapTotal | awk 'NR=1 {print $2$3}' )
     if [ "$tswap" = '0kB' ]; then
       swap_tmp="/mnt/swapfile"
+      echo "We will now create $swapts swapfile!"
       # Do not create if OpenVZ VPS
       if [ ! -f /proc/user_beancounters ]; then
         echo
@@ -282,6 +289,7 @@ fi
         echo
         dd if=/dev/zero of="$swap_tmp" bs=1M count=$swap 2>/dev/null || /bin/rm -f "$swap_tmp"
         chmod 600 "$swap_tmp" && mkswap "$swap_tmp" &>/dev/null && swapon "$swap_tmp"
+        is_swap=yes
       fi
     fi
   fi
@@ -303,7 +311,9 @@ if [ "$ghost_num" = "1" ] || [ ! -f /usr/bin/node ]; then
 fi
 
 # To keep your Ghost blog running, install "pm2".
-npm install pm2 -g
+if [ "$ghost_num" = "1" ] || [ ! -f /usr/bin/pm2 ]; then
+    npm install pm2 -g || { echoerr "Failed to install 'pm2'."; exit 1; }
+fi
 
 # Global config for Caddy
 caddyname="Caddy Web Server"
@@ -358,9 +368,9 @@ caddylog="/var/log/caddy"
   
   # Extract Caddy on created folder
   echo -n "  Extracting $caddyname to $caddypath..."
-  tar xzf caddy_linux_custom.tar.gz -C $caddypath #Extracting Caddy
+  tar xzf caddy_linux_custom.tar.gz -C $caddypath # Extracting Caddy
   echo " $(tput setaf 2)[DONE]$(tput sgr0)"
-  rm -rf caddy_linux_custom.tar.gz #Deleting Caddy archive
+  rm -rf caddy_linux_custom.tar.gz # Deleting Caddy archive
   echo ""
 
   # Creating non-root user for Caddy server
@@ -387,12 +397,10 @@ caddylog="/var/log/caddy"
   fi
 
 # Create a user to run Ghost:
+echo ""
 mkdir -p $caddywww/$BLOG_FQDN
 useradd -r -d "$caddywww/$BLOG_FQDN" -s /bin/false "$ghost_user"
 chown -R $ghost_user $caddywww/$BLOG_FQDN
-
-# Stop running Ghost blog processes, if any.
-pm2 kill
 
 # Switch to Ghost blog user. We use a "here document" to run multiple commands as this user.
 cd "$caddywww/$BLOG_FQDN" || exit 1
@@ -420,26 +428,28 @@ if [ "$ghost_num" != "1" ]; then
 fi
 SU_END
 
-# Remove temporary swap file
-if [[ $swapmnt == yes ]]; then
-  echo "$swap_tmp   none    swap    sw    0   0" >> /etc/fstab
-elif [[ $swapmnt == no ]]; then
-  swapoff $swap_tmp && /bin/rm -f $swap_tmp
+# Remove or keep temporary swap file
+if [ "$is_swap" == yes ]; then
+  if [[ $swapmnt == yes ]]; then
+    echo "$swap_tmp   none    swap    sw    0   0" >> /etc/fstab
+  elif [[ $swapmnt == no ]]; then
+    swapoff $swap_tmp && /bin/rm -f $swap_tmp
+  fi
 fi
-
-# Setup pm2 for ghost
-echo "export NODE_ENV=production" >> ~/.profile
-source ~/.profile
-pm2 start index.js --name ghost
-
-# Get current config
-pm2 dump #/root/.pm2/dump.pm2
-
-# Start pm2 for ghost on boot
-pm2 startup
 
 # Check if Ghost blog download was successful
 [ ! -f "$caddywww/$BLOG_FQDN/index.js" ] && exit 1
+
+# Setup pm2 for ghost
+if [ "$ghost_num" = "1" ]; then
+  echo "export NODE_ENV=production" >> ~/.profile
+  # Start pm2 for ghost on boot
+  pm2 startup
+fi
+source ~/.profile
+pm2 start index.js --name $ghost_user
+# Get current config
+pm2 dump #/root/.pm2/dump.pm2
 
 # Create the logfile:
 if [ "$ghost_num" = "1" ]; then
@@ -472,11 +482,12 @@ mkdir -p "$caddywww/$BLOG_FQDN/public"
 # We need to create a service for Caddy
 # Creating service will help Caddy to start on boot/reboot
 if [[ -e /etc/systemd/system/caddy.service || -e /etc/init.d/caddy.sh ]]; then
-  echo "  Service already exists! Skipped."
+  echo ""
+  echo "Caddy service already exists! Skipped."
 else
   nocert="--no-check-certificate"
   init=`cat /proc/1/comm`
-  echo -n "  Creating service..."
+  echo -n "Creating service..."
   if [ "$init" == 'systemd' ]; then
     MAIN="$"
     MAINPID="MAINPID"
@@ -486,7 +497,8 @@ else
 [Unit]
 Description=Caddy HTTP/2 web server
 Documentation=https://caddyserver.com/docs
-After=network.target
+After=network-online.target
+Requires=network-online.target
 
 [Service]
 User=$caddyuser
@@ -526,11 +538,16 @@ fi
   
   # Now we have Caddy service enabled.
   # Let's start Caddy web server now.
-  service caddy start
+  pids=`ps aux | grep $caddypath/caddy | grep -v grep | awk '{ print $2 }'`
+  if [ -z "$pids" ] ; then
+    service caddy start
+  else
+    service caddy reload
+  fi
 
 # Nice, we're succes in installing.
-cat <<EOF
-
+cd $pwd
+echo "
 =============================================================================
 
 Setup is complete. Your new Ghost blog is now ready for use!
@@ -538,6 +555,7 @@ Setup is complete. Your new Ghost blog is now ready for use!
 Ghost blog is installed in: $caddywww/$BLOG_FQDN
 Caddy web server config: $caddyfile
 Caddy web server logs: $caddylog
+Ghost user: $ghost_user
 
 Browse to http://$BLOG_FQDN/ghost (alternatively, set up SSH port forwarding
 and browse to http://localhost:$ghost_port/ghost) to complete the initial
@@ -547,8 +565,8 @@ Ghost support: http://support.ghost.org
 Real-time chat: https://ghost.org/slack
 
 =============================================================================
-
-EOF
+">> info_$ghost_user.txt
+cat info_$ghost_user.txt
 
 # exit now!
 exit 0
