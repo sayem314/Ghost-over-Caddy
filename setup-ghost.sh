@@ -19,15 +19,35 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see http://www.gnu.org/licenses/.
 
-version='1.3.3 beta (14 Jul 2017)'
+version='1.3.4 beta (07 Aug 2017)'
 
 max_blogs=3
 
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
-echoerr() { echo; echo "Error: $1" >&2; echo; }
+# Global config for Caddy
+caddyname="Caddy Web Server"
+caddypath="/opt/caddyserver"
+caddyuser="caddy"
+caddyfile="/etc/Caddyfile"
+caddywww="/var/caddywww"
+caddylog="/var/log/caddy"
+caddypids=$(pgrep -nf $caddypath/caddy)
 
+# wget config
+nocert="--no-check-certificate"
 
+howto () {
+	bashname=$(basename $BASH_SOURCE)
+	echo "  usage $(tput setaf 3)$bashname install$(tput sgr0) to install"
+	echo "  and $(tput setaf 3)$bashname update$(tput sgr0) to update"
+}
+
+echoerr () {
+	echo; echo "Error: $1" >&2; echo;
+}
+
+checkbasic ()  {
 # Check operating system
 os_type="$(lsb_release -si 2>/dev/null)"
 os_vers="$(lsb_release -sr 2>/dev/null)"
@@ -66,7 +86,9 @@ if [ "$(id -u)" != 0 ]; then
   echoerr "Script must be run as root. Try 'sudo bash $0'"
   exit 1
 fi
+}
 
+installghost () {
 # Check if server has at least 512MB RAM
 # Checking for 240MB RAM since most providers don't offer exact amount of RAM
 phymem="$(free -m | awk '/^Mem:/{print $2}')"
@@ -315,14 +337,6 @@ if [ "$ghost_num" = "1" ] || [ ! -f /usr/bin/pm2 ]; then
     npm install pm2 -g || { echoerr "Failed to install 'pm2'."; exit 1; }
 fi
 
-# Global config for Caddy
-caddyname="Caddy Web Server"
-caddypath="/opt/caddyserver"
-caddyuser="caddy"
-caddyfile="/etc/Caddyfile"
-caddywww="/var/caddywww"
-caddylog="/var/log/caddy"
-
   # Detetcting Caddy installed or not
   # Caddy is required to serve the site to internet
   echo ""
@@ -354,23 +368,35 @@ caddylog="/var/log/caddy"
       exit;
     fi
 
-  nocert="--no-check-certificate"
-
   # Installing Caddy
   echo -n "  Downloading $caddyname for $cpubitsname" #Caddy linux
-  wget -q $nocert "https://caddyserver.com/download/linux/$cpubits" -O "caddy_linux_custom.tar.gz"
+  # Installing Caddy
+  echo -n "  Downloading $caddyname for $cpubitsname" #Caddy linux
+  if ! wget -q $nocert "https://caddyserver.com/download/linux/$cpubits" -O "caddy_linux_custom.tar.gz"; then
+  	echo "  [$(tput setaf 1)FAILED$(tput sgr0)]"
+	echo ""
+	echo "  Error: Cannot download Caddy binary!"
+	echo "  https://caddyserver.com/download/linux/$cpubits"
+	exit 1
+  fi
   echo "  [$(tput setaf 2)DONE$(tput sgr0)]"
 
   # Creating folders
   echo ""
   mkdir -p $caddypath
   mkdir -p $caddylog
-  
-  # Extract Caddy on created folder
+
+  # Extract Caddy to appropriate folder
   echo -n "  Extracting $caddyname to $caddypath..."
-  tar xzf caddy_linux_custom.tar.gz -C $caddypath # Extracting Caddy
+  if ! tar xzf caddy_linux_custom.tar.gz -C $caddypath; then
+	echo "  [$(tput setaf 1)FAILED$(tput sgr0)]"
+	echo ""
+	echo "  Error: Cannot extract 'caddy_linux_custom.tar.gz'"
+	echo "  Abort."
+	exit 1
+  fi
   echo " $(tput setaf 2)[DONE]$(tput sgr0)"
-  rm -rf caddy_linux_custom.tar.gz # Deleting Caddy archive
+  rm -f caddy_linux_custom.tar.gz # Deleting Caddy archive
   echo ""
 
   # Creating non-root user for Caddy server
@@ -485,7 +511,6 @@ if [[ -e /etc/systemd/system/caddy.service || -e /etc/init.d/caddy.sh ]]; then
   echo ""
   echo "Caddy service already exists! Skipped."
 else
-  nocert="--no-check-certificate"
   init=`cat /proc/1/comm`
   echo -n "Creating service..."
   if [ "$init" == 'systemd' ]; then
@@ -567,6 +592,118 @@ Real-time chat: https://ghost.org/slack
 =============================================================================
 ">> info_$ghost_user.txt
 cat info_$ghost_user.txt
+}
+
+updateghost () {
+# Echo current update support
+echo " This script currently only support updates of Caddy"
+echo " In future further support will be implemented."
+sleep 3
+
+# Detetcting Caddy installed or not
+if [[ ! -e "$caddypath/caddy" ]]; then
+	echo; echo " $caddyname is not installed";
+	echo; exit;
+fi
+
+echo;
+
+# Check if there is newer version available
+caddyserv=$($caddypath/caddy -version | awk '{print}' | sed 's/[^0-9]*//g' | sed 's/^0*//')
+CADDYV=$(wget -qO- https://api.github.com/repos/mholt/caddy/releases/latest | grep tag_name | sed 's/[^0-9]*//g' | sed 's/^0*//')
+if [[ ! $CADDYV -gt $caddyserv ]]; then
+	echo " Looks like you already have latest version of Caddy installed."
+	echo " Abort.";
+	sleep 0.1; exit;
+fi
+
+# Stop current process if found
+if [ ! -z "$pids" ] ; then
+	echo " Found Caddy is running!"
+	service caddy stop
+	sleep 4
+	echo " Stopped Caddy web server"
+	startcaddy=yes
+fi
+
+# Detect architecture
+echo ""
+if [ -n "$(uname -m | grep 64)" ]; then
+	cpubits="amd64"
+	cpubitsname="(64bit)..."
+elif [ -n "$(uname -m | grep 86)" ]; then
+	cpubits="386"
+	cpubitsname="(32bit)..."
+elif [ -n "$(uname -m | grep armv5)" ]; then
+	cpubits="arm5"
+	cpubitsname="(ARM 5)..."
+elif [ -n "$(uname -m | grep armv6l)" ]; then
+	cpubits="arm6"
+	cpubitsname="(ARM 6)..."
+elif [ -n "$(uname -m | grep armv7l)" ]; then
+	cpubits="arm7"
+	cpubitsname="(ARM 7)..."
+else
+	echo; echo "  unsupported or unknown architecture"
+	echo; exit;
+fi
+
+# Star downloading caddy now
+echo -n " Downloading $caddyname for $cpubitsname..." #Caddy linux
+if ! wget -q $nocert "https://caddyserver.com/download/linux/$cpubits" -O "caddy_linux_custom.tar.gz"; then
+	echo "  [$(tput setaf 1)FAILED$(tput sgr0)]"
+	echo ""
+	echo "  Error: Cannot download Caddy binary!"
+	echo "  https://caddyserver.com/download/linux/$cpubits"
+	exit 1
+fi
+echo "  [$(tput setaf 2)DONE$(tput sgr0)]"
+
+# Delete Caddy folder
+echo -n "  Removing current $caddyname from $caddypath"
+sleep 0.2
+rm -rf $caddypath/*
+echo "  [$(tput setaf 2)DONE$(tput sgr0)]"
+sleep 0.1
+  
+# Extract Caddy to appropriate folder
+echo -n "  Extracting $caddyname to $caddypath..."
+if ! tar xzf caddy_linux_custom.tar.gz -C $caddypath; then
+	echo "  [$(tput setaf 1)FAILED$(tput sgr0)]"
+	echo ""
+	echo "  Error: Cannot extract 'caddy_linux_custom.tar.gz'"
+	echo "  Abort."
+	exit 1
+fi
+echo " $(tput setaf 2)[DONE]$(tput sgr0)"
+
+# Granting owner access and required permission
+if id -u $caddyuser >/dev/null 2>&1; then
+	chown -R $caddyuser $caddypath
+fi
+
+# Port setup using setcap
+setcap cap_net_bind_service=+ep $caddypath/caddy &>/dev/null
+echo "  [$(tput setaf 2)DONE$(tput sgr0)]"
+echo; echo "  Updated to $caddyserv"; echo;
+  
+# Let's start Caddy web server now.
+if [[ $startcaddy == yes ]]; then
+	echo ""
+	service caddy start
+	echo "  Caddy web server started"
+	service status caddy
+fi
+}
+
+case $1 in
+	'-install'|'--install'|'install' )
+		checkbasic; installghost;;
+	'-update'|'--update'|'update' )
+		checkbasic; updateghost;;
+	*)
+		howto;;
+esac
 
 # exit now!
 exit 0
