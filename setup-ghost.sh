@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License along with
 # this program. If not, see http://www.gnu.org/licenses/.
 
-version='1.3.3 beta (14 Jul 2017)'
+version='1.3.4 beta (14 Jul 2017)'
 
 max_blogs=3
 
@@ -355,6 +355,7 @@ caddylog="/var/log/caddy"
     fi
 
   nocert="--no-check-certificate"
+  cpubits="$cpubits?license=personal"
 
   # Installing Caddy
   echo -n "  Downloading $caddyname for $cpubitsname" #Caddy linux
